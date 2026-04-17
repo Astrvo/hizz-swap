@@ -2,6 +2,7 @@
   "name": "hizz-swap",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Oracle-first prototype for a gamified Cardano swap experience powered by Charli3.",
   "scripts": {
@@ -13,4 +14,3 @@
     "node": ">=24"
   }
 }
-

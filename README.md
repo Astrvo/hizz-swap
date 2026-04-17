@@ -205,3 +205,6 @@ Primary resources used for this foundation:
 - It already respects the "must use Charli3 oracle" constraint at the architecture level.
 - Real swap execution is the next layer, not something hidden behind fake buttons today.
 
+## License
+
+MIT
