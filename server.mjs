@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAdaUsdQuote } from "./src/charli3/ada-usd-quote.mjs";
+import {
+  getMarketQuote,
+  listSupportedMarkets,
+} from "./src/charli3/market-quote.mjs";
 import { getOracleView, listOracleCards } from "./src/charli3/oracle-service.mjs";
 
 const fileName = fileURLToPath(import.meta.url);
@@ -33,6 +37,25 @@ const server = http.createServer(async (request, response) => {
     if (requestUrl.pathname === "/api/oracles") {
       const cards = await listOracleCards();
       return sendJson(response, 200, { data: cards });
+    }
+
+    if (requestUrl.pathname === "/api/markets") {
+      return sendJson(response, 200, {
+        data: listSupportedMarkets(),
+      });
+    }
+
+    if (requestUrl.pathname === "/api/quote") {
+      const marketId = requestUrl.searchParams.get("market") ?? undefined;
+      const quote = await getMarketQuote(marketId);
+
+      if (!quote) {
+        return sendJson(response, 404, {
+          error: "A live quote is unavailable for the requested market.",
+        });
+      }
+
+      return sendJson(response, 200, { data: quote });
     }
 
     if (requestUrl.pathname === "/api/ada-usd") {

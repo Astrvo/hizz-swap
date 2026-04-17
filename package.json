@@ -9,7 +9,7 @@
     "build": "node scripts/generate-static-data.mjs",
     "dev": "node --watch server.mjs",
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js && node --check scripts/generate-static-data.mjs"
+    "check": "node --check server.mjs && node --check public/app.js && node --check scripts/generate-static-data.mjs && node --check src/charli3/market-catalog.mjs && node --check src/charli3/market-quote.mjs && node --check netlify/functions/quote/index.mts"
   },
   "engines": {
     "node": ">=24"

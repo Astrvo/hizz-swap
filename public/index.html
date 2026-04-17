@@ -3,85 +3,113 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hizz Swap | ADA Tap Board</title>
+    <title>Hizz Swap | Live Tap Board</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="page">
-      <div class="noise"></div>
-      <section class="desk">
+      <div class="page-glow"></div>
+      <section class="shell">
         <header class="topbar">
           <div class="brand-block">
-            <span class="brand-kicker">Hizz / Charli3</span>
-            <h1>ADA/USD Tap Board</h1>
+            <span class="brand-kicker">Hizz / Charli3 / Live board</span>
+            <h1>Tap Swap Board</h1>
+            <p class="brand-copy">
+              A single-screen Charli3 demo that keeps the live price in the center, samples every 500ms,
+              and recalculates the right-side trade ladder on every pull.
+            </p>
           </div>
-          <div class="topbar-meta">
+          <div class="topbar-controls">
+            <label class="market-select">
+              <span class="control-label">Market</span>
+              <select id="marketSelect">
+                <option value="midnight-ada">MIDnight / ADA</option>
+                <option value="snek-ada">SNEK / ADA</option>
+                <option value="ada-usd">ADA / USD</option>
+              </select>
+            </label>
             <div class="live-pill" id="livePill">
               <span class="live-dot"></span>
               <strong id="statusMode">Booting</strong>
               <span id="statusText">Preparing oracle feed.</span>
             </div>
-            <div class="price-stack">
-              <span class="price-label">Current price</span>
-              <strong class="price-value" id="currentPrice">--</strong>
-              <span class="price-subline" id="priceSubline">Waiting for first pull.</span>
-            </div>
           </div>
         </header>
 
-        <section class="arena">
-          <div class="arena-head">
-            <div>
-              <p class="arena-kicker">Charli3 pull oracle / 1s refresh</p>
-              <div class="arena-line">
-                <span class="arena-market" id="marketName">ADA / USD</span>
-                <span class="arena-badge" id="readinessBadge">booting</span>
+        <section class="workspace">
+          <section class="chart-panel">
+            <div class="panel-head">
+              <div class="panel-copy">
+                <p class="panel-kicker">Charli3 current quote / 500ms sampling</p>
+                <div class="panel-line">
+                  <span class="market-name" id="marketName">MIDnight / ADA</span>
+                  <span class="market-badge" id="readinessBadge">booting</span>
+                </div>
+                <div class="price-stack">
+                  <span class="price-label">Center price</span>
+                  <strong class="price-value" id="currentPrice">--</strong>
+                  <span class="price-subline" id="priceSubline">Waiting for the first live sample.</span>
+                </div>
+              </div>
+              <div class="meta-grid">
+                <div class="meta-chip">
+                  <span>Route</span>
+                  <strong id="sourceLabel">--</strong>
+                </div>
+                <div class="meta-chip">
+                  <span>Last pull</span>
+                  <strong id="lastPullLabel">--</strong>
+                </div>
+                <div class="meta-chip">
+                  <span>Live samples</span>
+                  <strong id="sampleCountLabel">--</strong>
+                </div>
               </div>
             </div>
-            <div class="arena-stats">
-              <div class="stat-chip">
-                <span>Oracle source</span>
-                <strong id="sourceLabel">--</strong>
-              </div>
-              <div class="stat-chip">
-                <span>Last pull</span>
-                <strong id="lastPullLabel">--</strong>
-              </div>
-            </div>
-          </div>
 
-          <div class="chart-stage">
-            <div class="grid-backdrop"></div>
-            <div class="current-line" id="currentLine"></div>
-            <div class="current-tag" id="currentTag">--</div>
-            <svg class="chart-svg" id="chartSvg" viewBox="0 0 1200 560" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(17, 215, 255, 0.28)"></stop>
-                  <stop offset="72%" stop-color="rgba(17, 215, 255, 0.04)"></stop>
-                  <stop offset="100%" stop-color="rgba(17, 215, 255, 0)"></stop>
-                </linearGradient>
-              </defs>
-              <path id="chartFill" class="chart-fill"></path>
-              <path id="chartLine" class="chart-line"></path>
-            </svg>
-            <div class="projection-layer" id="projectionLayer"></div>
-          </div>
+            <div class="chart-stage">
+              <div class="grid-backdrop"></div>
+              <div class="center-beam"></div>
+              <div class="current-line" id="currentLine"></div>
+              <div class="center-tag" id="centerTag">--</div>
+              <div class="current-tag" id="currentTag">--</div>
+              <svg class="chart-svg" viewBox="0 0 1200 640" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(79, 139, 255, 0.34)"></stop>
+                    <stop offset="72%" stop-color="rgba(79, 139, 255, 0.06)"></stop>
+                    <stop offset="100%" stop-color="rgba(79, 139, 255, 0)"></stop>
+                  </linearGradient>
+                </defs>
+                <path id="chartFill" class="chart-fill"></path>
+                <path id="chartLine" class="chart-line"></path>
+              </svg>
+            </div>
 
-          <footer class="status-strip">
-            <div class="strip-card">
-              <span>Selected box</span>
-              <strong id="selectionSummary">Waiting for price ladder...</strong>
+            <footer class="chart-footer">
+              <div class="footer-chip">
+                <span>Routing</span>
+                <strong id="routingNote">Waiting for market routing...</strong>
+              </div>
+              <div class="footer-chip">
+                <span>Oracle note</span>
+                <strong id="oracleNote">--</strong>
+              </div>
+              <div class="footer-chip">
+                <span>Endpoint</span>
+                <strong id="endpointLabel">/api/quote?market=midnight-ada</strong>
+              </div>
+            </footer>
+          </section>
+
+          <aside class="trade-panel">
+            <div class="trade-head">
+              <span class="panel-kicker">Trade ladder</span>
+              <strong class="trade-price" id="centerPrice">--</strong>
+              <p class="trade-copy" id="selectionSummary">Waiting for the first ladder calculation.</p>
             </div>
-            <div class="strip-card">
-              <span>Oracle note</span>
-              <strong id="oracleNote">--</strong>
-            </div>
-            <div class="strip-card">
-              <span>Endpoint</span>
-              <strong id="endpointLabel">/api/ada-usd</strong>
-            </div>
-          </footer>
+            <div class="trade-board" id="tradeBoard"></div>
+          </aside>
         </section>
       </section>
     </main>

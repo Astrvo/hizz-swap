@@ -11,19 +11,24 @@ This repo starts with the read path, not the full transaction path. That is deli
 ## What is already in this repo
 
 - A lightweight zero-dependency Node server
-- A branded static prototype UI
+- A branded single-screen prototype UI
 - A small JSON config registry derived from the official Charli3 hackathon feed configs
 - An oracle adapter that:
   - loads official preprod feed settings,
   - tries to read the latest feed data from the public synced preprod Kupo instance,
   - falls back to a seeded snapshot path when the live endpoint is unavailable
+- A live market router that:
+  - tries `MIDnight / ADA` first,
+  - falls back to `SNEK / ADA` when the first market is too thin to visualize cleanly,
+  - falls back again to `ADA / USD` pull-oracle mode when token-pair quotes are unavailable
 - Initial project docs and milestone planning
 
 ## Why Charli3 is at the center
 
-This prototype is explicitly built around **Charli3 ODV** rather than around a generic price API.
+This prototype is explicitly built around **Charli3** rather than around a generic price API.
 
 - Charli3 Pull Oracle gives us a request-driven oracle model that matches low-latency dApp use cases.
+- Charli3 Token API gives us fast current-price reads for active Cardano pairs such as `SNEK / ADA`.
 - The official preprod configs already include:
   - oracle address,
   - policy id,
@@ -39,6 +44,7 @@ flowchart LR
     A["Tap UI / play layer"] --> B["Hizz API layer"]
     B --> C["Charli3 config registry"]
     B --> D["Charli3 ODV feed reader"]
+    B --> J["Charli3 Token API current quotes"]
     D --> E["Public Kupo preprod"]
     D --> F["Seeded snapshot fallback"]
     B --> G["Future execution adapter"]
@@ -54,12 +60,15 @@ flowchart LR
 2. **Oracle adapter**
    The Node backend loads official Charli3 market configs and attempts to hydrate feed state from Kupo.
 
-3. **Fallback path**
-   If the public preprod endpoint is unreachable from the current environment, the backend still returns a truthful readiness state instead of pretending it is live.
+3. **Live quote router**
+   The Node backend now also calls Charli3 current-price routes for `MIDnight / ADA` and `SNEK / ADA`, then chooses the first market that returns a clean, renderable quote for the board.
+
+4. **Fallback path**
+   If the token-pair routes or public preprod endpoint are unreachable from the current environment, the backend still returns a truthful readiness state instead of pretending it is live.
 
 ### Next layer
 
-4. **Execution adapter**
+5. **Execution adapter**
    This is where wallet connection, ODV aggregation, and swap construction will land next.
 
 ## Repo layout
@@ -98,16 +107,20 @@ The original source for those definitions is the Charli3 hackathon resources rep
 
 For a selected market:
 
-1. Load the market config from `oracle-configs/`
-2. Read the configured oracle contract address
-3. Query the public Kupo instance at:
+1. Try the requested live pair route:
+   - `MIDnight / ADA`
+   - `SNEK / ADA`
+2. If a live token-pair price is too thin or unavailable, route down the fallback chain
+3. For `ADA / USD`, load the market config from `oracle-configs/`
+4. Read the configured oracle contract address
+5. Query the public Kupo instance at:
    - `http://35.209.192.203:1442`
-4. Attempt to parse the first Charli3-style datum map containing:
+6. Attempt to parse the first Charli3-style datum map containing:
    - price,
    - created time,
    - expiry time,
    - optional precision and symbols
-5. Return one of three readiness states:
+7. Return one of three readiness states:
    - `live`
    - `seeded`
    - `config-only`
@@ -154,14 +167,20 @@ This produces `public/data/oracles.json`, which the frontend will use automatica
 
 ## Netlify deployment mode
 
-The repo now supports a pure static Netlify deployment:
+The repo now supports a Netlify deployment with a serverless quote route:
 
 - `netlify.toml` sets `publish = "public"`
 - Netlify runs `npm run build`
-- the build generates a static oracle bundle from the official Charli3 market configs and seeded demo snapshots
-- the frontend auto-detects runtime mode:
-  - `Live API mode` when running through `server.mjs`
-  - `Static demo mode` when served as a pure static site on Netlify
+- Netlify Functions serve:
+  - `GET /api/markets`
+  - `GET /api/quote?market=midnight-ada|snek-ada|ada-usd`
+- the frontend polls live routes every `500ms`
+- if the live route cannot hydrate, the UI falls back truthfully to oracle or static mode instead of faking a changing chart
+
+### Required environment variable
+
+- `CHARLI3_API_KEY`
+  The scope must include **Functions** so Netlify can hydrate `MIDnight / ADA` and `SNEK / ADA` from the Charli3 Token API.
 
 ## Available API endpoints
 
@@ -187,6 +206,22 @@ Returns:
 - oracle readiness
 - parsed feed details when available
 - fallback notes when live hydration fails
+
+### `GET /api/markets`
+
+Returns the supported UI market options and their route labels.
+
+### `GET /api/quote?market=midnight-ada|snek-ada|ada-usd`
+
+Returns:
+
+- the requested market id
+- the resolved market id actually powering the board
+- the current price
+- live or fallback readiness
+- route label
+- fallback reasoning
+- a `500ms` polling hint for the frontend sampler
 
 ## Product direction after this foundation
 

@@ -1,33 +1,41 @@
+const POLL_INTERVAL_MS = 500;
+const MAX_POINTS = 180;
+const STORAGE_KEY = "hizz-swap-live-history-v2";
+const HISTORY_TTL_MS = 1000 * 60 * 20;
+const DEFAULT_MARKET_ID = "midnight-ada";
+const FALLBACK_PRICE = 0.334136;
+
 const state = {
-  history: [],
+  historyByMarket: loadStoredHistory(),
   latestQuote: null,
-  selectedLevel: 1,
+  selectedMarketId: DEFAULT_MARKET_ID,
+  selectedTradeId: null,
   runtimeMode: "booting",
-  staticDataset: null,
   polling: false,
 };
 
-const LEVELS = [1, 2, 3, 4];
-const MAX_POINTS = 72;
-const FALLBACK_PRICE = 0.334136;
-
 const refs = {
+  marketSelect: document.querySelector("#marketSelect"),
   statusMode: document.querySelector("#statusMode"),
   statusText: document.querySelector("#statusText"),
-  currentPrice: document.querySelector("#currentPrice"),
-  priceSubline: document.querySelector("#priceSubline"),
   marketName: document.querySelector("#marketName"),
   readinessBadge: document.querySelector("#readinessBadge"),
+  currentPrice: document.querySelector("#currentPrice"),
+  priceSubline: document.querySelector("#priceSubline"),
   sourceLabel: document.querySelector("#sourceLabel"),
   lastPullLabel: document.querySelector("#lastPullLabel"),
+  sampleCountLabel: document.querySelector("#sampleCountLabel"),
   currentLine: document.querySelector("#currentLine"),
   currentTag: document.querySelector("#currentTag"),
+  centerTag: document.querySelector("#centerTag"),
   chartLine: document.querySelector("#chartLine"),
   chartFill: document.querySelector("#chartFill"),
-  projectionLayer: document.querySelector("#projectionLayer"),
-  selectionSummary: document.querySelector("#selectionSummary"),
+  routingNote: document.querySelector("#routingNote"),
   oracleNote: document.querySelector("#oracleNote"),
   endpointLabel: document.querySelector("#endpointLabel"),
+  centerPrice: document.querySelector("#centerPrice"),
+  selectionSummary: document.querySelector("#selectionSummary"),
+  tradeBoard: document.querySelector("#tradeBoard"),
 };
 
 boot();
@@ -35,19 +43,27 @@ boot();
 async function boot() {
   bindInteractions();
   await refreshQuote(true);
+
   window.setInterval(() => {
     refreshQuote(false);
-  }, 1000);
+  }, POLL_INTERVAL_MS);
 }
 
 function bindInteractions() {
-  refs.projectionLayer.addEventListener("click", (event) => {
-    const tile = event.target.closest("[data-level]");
+  refs.marketSelect.addEventListener("change", async (event) => {
+    state.selectedMarketId = event.target.value;
+    state.selectedTradeId = null;
+    await refreshQuote(true);
+  });
+
+  refs.tradeBoard.addEventListener("click", (event) => {
+    const tile = event.target.closest("[data-trade-id]");
+
     if (!tile) {
       return;
     }
 
-    state.selectedLevel = Number(tile.dataset.level);
+    state.selectedTradeId = tile.dataset.tradeId;
     render();
   });
 }
@@ -60,58 +76,78 @@ async function refreshQuote(isBoot) {
   state.polling = true;
 
   try {
-    const quote = await fetchAdaQuote();
+    const quote = await fetchMarketQuote(state.selectedMarketId);
+
     if (!quote) {
       return;
     }
 
     state.latestQuote = quote;
+    state.runtimeMode = quote.mode;
+    appendHistory(quote.marketId, quote.price, quote.fetchedAtMs);
 
-    if (!state.history.length) {
-      seedHistory(quote.price, quote.fetchedAtMs);
-    } else {
-      appendHistory(quote.price, quote.fetchedAtMs);
+    if (isBoot || !state.selectedTradeId) {
+      state.selectedTradeId = "up-1";
     }
 
-    if (isBoot && !LEVELS.includes(Math.abs(state.selectedLevel))) {
-      state.selectedLevel = 1;
-    }
-
+    persistHistory();
     render();
   } finally {
     state.polling = false;
   }
 }
 
-async function fetchAdaQuote() {
-  const apiPayload = await tryFetchJson("/api/ada-usd");
+async function fetchMarketQuote(marketId) {
+  const apiPayload = await tryFetchJson(`/api/quote?market=${encodeURIComponent(marketId)}`);
+
   if (apiPayload?.data) {
-    state.runtimeMode = "live-api";
     return normalizeQuote(apiPayload.data);
   }
 
-  const staticBundle = await getStaticBundle();
-  const view = staticBundle?.views?.["ada-usd-preprod"];
-  if (!view) {
-    return null;
+  const legacyAdaPayload = await tryFetchJson("/api/ada-usd");
+
+  if (legacyAdaPayload?.data) {
+    return normalizeQuote({
+      ...legacyAdaPayload.data,
+      marketId: "ada-usd",
+      requestedMarketId: marketId,
+      requestedMarket: labelForMarket(marketId),
+      fallbackApplied: marketId !== "ada-usd",
+      fallbackNote:
+        marketId !== "ada-usd"
+          ? `${labelForMarket(marketId)} is unavailable right now, so the board fell back to ADA / USD.`
+          : "ADA / USD is the active route.",
+      pollIntervalMs: POLL_INTERVAL_MS,
+      routeLabel: legacyAdaPayload.data.source,
+      mode: legacyAdaPayload.data.mode === "live" ? "live-pull-oracle" : "oracle-fallback",
+    });
   }
 
-  state.runtimeMode = "static-demo";
   return normalizeQuote({
-    market: view.displayName,
-    pair: view.pair,
-    baseAsset: view.baseAsset,
-    quoteAsset: view.quoteAsset,
-    price: view.oracle.priceDisplay,
-    precision: view.oracle.precision,
-    readiness: view.oracle.readiness,
-    source: view.oracle.source,
-    note: view.oracle.note,
+    marketId: "ada-usd",
+    requestedMarketId: marketId,
+    requestedMarket: labelForMarket(marketId),
+    market: "ADA / USD",
+    pair: "ADA/USD",
+    baseAsset: "ADA",
+    quoteAsset: "USD",
+    price: FALLBACK_PRICE,
+    precision: 6,
+    readiness: "static-demo",
+    source: "static demo fallback",
+    routeLabel: "Static demo fallback",
+    note: "Live function data is unavailable, so the UI is using the bundled fallback quote.",
     fetchedAtMs: Date.now(),
-    oracleTimestampMs: view.oracle.createdAtMs,
-    expiresAtMs: view.oracle.expiresAtMs,
+    oracleTimestampMs: null,
+    expiresAtMs: null,
+    hourlyChangePct: null,
+    dailyChangePct: null,
+    currentTvl: null,
+    hourlyVolume: null,
     mode: "static-demo",
-    kupoEndpoint: view.networkConfig.kupoUrl,
+    fallbackApplied: marketId !== "ada-usd",
+    fallbackNote: `${labelForMarket(marketId)} is unavailable right now, so the board is showing a static ADA / USD fallback.`,
+    pollIntervalMs: POLL_INTERVAL_MS,
   });
 }
 
@@ -119,38 +155,31 @@ function normalizeQuote(raw) {
   const price = Number(raw.price ?? FALLBACK_PRICE);
 
   return {
+    marketId: raw.marketId ?? "ada-usd",
+    requestedMarketId: raw.requestedMarketId ?? raw.marketId ?? "ada-usd",
+    requestedMarket: raw.requestedMarket ?? raw.market ?? "ADA / USD",
     market: raw.market ?? "ADA / USD",
     pair: raw.pair ?? "ADA/USD",
     baseAsset: raw.baseAsset ?? "ADA",
     quoteAsset: raw.quoteAsset ?? "USD",
     price: Number.isFinite(price) ? price : FALLBACK_PRICE,
     precision: Number.isFinite(raw.precision) ? raw.precision : 6,
-    readiness: raw.readiness ?? "seeded",
-    source: raw.source ?? "charli3",
+    readiness: raw.readiness ?? "live",
+    source: raw.source ?? raw.routeLabel ?? "charli3",
+    routeLabel: raw.routeLabel ?? raw.source ?? "charli3",
     note: raw.note ?? "",
+    fallbackApplied: Boolean(raw.fallbackApplied),
+    fallbackNote: raw.fallbackNote ?? `${raw.market ?? "Selected market"} is the active route.`,
     fetchedAtMs: Number(raw.fetchedAtMs ?? Date.now()),
-    oracleTimestampMs: raw.oracleTimestampMs ? Number(raw.oracleTimestampMs) : null,
-    expiresAtMs: raw.expiresAtMs ? Number(raw.expiresAtMs) : null,
-    mode: raw.mode ?? state.runtimeMode,
-    kupoEndpoint: raw.kupoEndpoint ?? "/api/ada-usd",
+    oracleTimestampMs: numberOrNull(raw.oracleTimestampMs),
+    expiresAtMs: numberOrNull(raw.expiresAtMs),
+    hourlyChangePct: numberOrNull(raw.hourlyChangePct),
+    dailyChangePct: numberOrNull(raw.dailyChangePct),
+    currentTvl: numberOrNull(raw.currentTvl),
+    hourlyVolume: numberOrNull(raw.hourlyVolume),
+    mode: raw.mode ?? "live-price-api",
+    pollIntervalMs: Number(raw.pollIntervalMs ?? POLL_INTERVAL_MS),
   };
-}
-
-async function getStaticBundle() {
-  if (state.staticDataset) {
-    return state.staticDataset;
-  }
-
-  const response = await fetch("/data/oracles.json", {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Static data bundle unavailable (${response.status})`);
-  }
-
-  state.staticDataset = await response.json();
-  return state.staticDataset;
 }
 
 async function tryFetchJson(url) {
@@ -169,22 +198,19 @@ async function tryFetchJson(url) {
   }
 }
 
-function seedHistory(price, fetchedAtMs) {
-  state.history = Array.from({ length: MAX_POINTS }, (_, index) => ({
-    price,
-    timestamp: fetchedAtMs - (MAX_POINTS - index) * 1000,
-  }));
-}
+function appendHistory(marketId, price, timestamp) {
+  const current = state.historyByMarket[marketId] ?? [];
+  const next = [
+    ...current,
+    {
+      price,
+      timestamp,
+    },
+  ]
+    .filter((point) => timestamp - point.timestamp <= HISTORY_TTL_MS)
+    .slice(-MAX_POINTS);
 
-function appendHistory(price, fetchedAtMs) {
-  state.history.push({
-    price,
-    timestamp: fetchedAtMs,
-  });
-
-  if (state.history.length > MAX_POINTS) {
-    state.history = state.history.slice(-MAX_POINTS);
-  }
+  state.historyByMarket[marketId] = next;
 }
 
 function render() {
@@ -193,159 +219,345 @@ function render() {
   }
 
   const quote = state.latestQuote;
-  const chartModel = buildChartModel(state.history);
-  const projections = buildProjectionModel({
-    price: quote.price,
-    chartModel,
-    trendBias: computeTrendBias(state.history),
-  });
-  const selectedProjection =
-    projections.find((projection) => projection.level === state.selectedLevel) ?? projections[0];
+  const rawHistory = state.historyByMarket[quote.marketId] ?? [];
+  const visibleHistory = compressHistory(rawHistory, quote);
+  const chartModel = buildChartModel(visibleHistory, quote);
+  const tradeModel = buildTradeModel(quote, rawHistory);
+  const activeTrade =
+    tradeModel.find((trade) => trade.id === state.selectedTradeId) ?? tradeModel[0];
 
+  refs.marketSelect.value = state.selectedMarketId;
   refs.marketName.textContent = quote.market;
-  refs.currentPrice.textContent = formatPrice(quote.price);
-  refs.priceSubline.textContent = buildPriceSubline(chartModel, quote);
   refs.readinessBadge.textContent = quote.readiness;
-  refs.sourceLabel.textContent = quote.source;
+  refs.currentPrice.textContent = formatPrice(quote.price, quote.quoteAsset);
+  refs.priceSubline.textContent = buildPriceSubline({
+    quote,
+    history: rawHistory,
+  });
+  refs.sourceLabel.textContent = quote.routeLabel;
   refs.lastPullLabel.textContent = formatTime(quote.fetchedAtMs);
+  refs.sampleCountLabel.textContent = `${rawHistory.length} ticks`;
+  refs.routingNote.textContent = quote.fallbackNote;
   refs.oracleNote.textContent = quote.note;
-  refs.endpointLabel.textContent =
-    state.runtimeMode === "live-api" ? "/api/ada-usd" : "static oracle bundle";
-  refs.statusMode.textContent = state.runtimeMode === "live-api" ? "Live API mode" : "Static demo mode";
-  refs.statusText.textContent =
-    state.runtimeMode === "live-api"
-      ? "Polling the ADA/USD oracle route every second."
-      : "Polling the static ADA/USD fallback every second.";
+  refs.endpointLabel.textContent = `/api/quote?market=${quote.requestedMarketId}`;
+  refs.statusMode.textContent = buildModeLabel(quote.mode);
+  refs.statusText.textContent = buildStatusText(quote);
+  refs.centerPrice.textContent = formatPrice(quote.price, quote.quoteAsset);
   refs.currentLine.style.top = `${chartModel.currentY}%`;
   refs.currentTag.style.top = `calc(${chartModel.currentY}% - 1.2rem)`;
-  refs.currentTag.textContent = formatPrice(quote.price);
+  refs.currentTag.textContent = formatPrice(quote.price, quote.quoteAsset);
+  refs.centerTag.textContent = formatPrice(quote.price, quote.quoteAsset);
   refs.chartLine.setAttribute("d", chartModel.linePath);
   refs.chartFill.setAttribute("d", chartModel.fillPath);
-  refs.chartFill.setAttribute("fill", "url(#chartGradient)");
-  refs.projectionLayer.innerHTML = projections
-    .map((projection) => renderProjectionTile(projection, selectedProjection.level))
-    .join("");
-  refs.selectionSummary.textContent = buildSelectionSummary(selectedProjection);
+  refs.tradeBoard.innerHTML = renderTradeBoard(tradeModel, activeTrade, quote);
+  refs.selectionSummary.textContent = buildSelectionSummary(activeTrade, quote);
 }
 
-function buildChartModel(history) {
-  const prices = history.map((point) => point.price);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const span = max - min || max * 0.012 || 0.01;
-  const paddedMin = min - span * 1.8;
-  const paddedMax = max + span * 1.8;
+function compressHistory(history, quote) {
+  if (!history.length) {
+    return [
+      {
+        price: quote.price,
+        timestamp: quote.fetchedAtMs,
+      },
+    ];
+  }
+
+  const epsilon = Math.max(Math.abs(quote.price) * 0.00002, 1 / 10 ** Math.max(quote.precision, 6));
+  const compact = history.reduce((accumulator, point) => {
+    const previous = accumulator.at(-1);
+
+    if (!previous || Math.abs(previous.price - point.price) > epsilon) {
+      accumulator.push(point);
+      return accumulator;
+    }
+
+    accumulator[accumulator.length - 1] = point;
+    return accumulator;
+  }, []);
+
+  if (compact.length === 1 && history.length > 1) {
+    return [history[0], history.at(-1)];
+  }
+
+  return compact;
+}
+
+function buildChartModel(history, quote) {
   const width = 1200;
-  const height = 560;
+  const height = 640;
+  const safeHistory = history.length
+    ? history
+    : [
+        {
+          price: quote.price,
+          timestamp: quote.fetchedAtMs,
+        },
+      ];
+  const latest = safeHistory.at(-1)?.price ?? quote.price;
+  const maxOffset = Math.max(
+    ...safeHistory.map((point) => Math.abs(point.price - latest)),
+    0,
+  );
+  const percentageFloor =
+    Math.abs(latest) >= 1 ? Math.abs(latest) * 0.012 : Math.abs(latest) * 0.04;
+  const minimumSpan = Math.max(percentageFloor, 1 / 10 ** Math.max(quote.precision - 1, 4));
+  const radius = Math.max(maxOffset * 2.1, minimumSpan, 0.000001);
+  const paddedMin = latest - radius;
+  const paddedMax = latest + radius;
+  const points = (safeHistory.length === 1
+    ? [
+        safeHistory[0],
+        {
+          price: safeHistory[0].price,
+          timestamp: safeHistory[0].timestamp + quote.pollIntervalMs,
+        },
+      ]
+    : safeHistory
+  ).map((point, index, collection) => ({
+    x: (index / Math.max(1, collection.length - 1)) * width,
+    y: scaleY(point.price, paddedMin, paddedMax, height),
+    price: point.price,
+  }));
 
-  const points = history.map((point, index) => {
-    const x = (index / Math.max(1, history.length - 1)) * width;
-    const y = scaleY(point.price, paddedMin, paddedMax, height);
-    return { x, y, price: point.price };
-  });
-
-  const linePath = points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-    .join(" ");
+  const linePath = buildSmoothPath(points);
   const fillPath = `${linePath} L ${width} ${height} L 0 ${height} Z`;
-  const currentY = ((points.at(-1)?.y ?? height / 2) / height) * 100;
 
   return {
-    paddedMin,
-    paddedMax,
     linePath,
     fillPath,
-    currentY,
-    width,
-    height,
-    latest: points.at(-1)?.price ?? FALLBACK_PRICE,
-    previous: points.at(-2)?.price ?? points.at(-1)?.price ?? FALLBACK_PRICE,
+    currentY: 50,
   };
 }
 
-function buildProjectionModel({ price, chartModel, trendBias }) {
-  const tiles = [];
+function buildTradeModel(quote, history) {
+  const baseMovePct = computeBaseMovePct(history, quote.price);
+  const trendBias = computeTrendBias(history);
+  const ladder = [];
 
-  for (const level of LEVELS) {
-    const movePct = 0.0034 + (level - 1) * 0.0048;
-    const leverage = 2 + level * 2 + (level > 2 ? 1 : 0);
-
-    for (const direction of [1, -1]) {
-      const signedLevel = level * direction;
-      const target = price * (1 + movePct * direction);
+  for (const direction of [1, -1]) {
+    for (const level of [1, 2, 3]) {
+      const movePct = baseMovePct * (1 + (level - 1) * 0.9);
+      const leverage = clamp(Math.round(2 + level * 2.5 + Math.abs(trendBias) * 2), 2, 12);
       const odds = clamp(
-        Math.round(56 - level * 10 + trendBias * 18 * direction),
+        Math.round(64 - level * 11 + trendBias * 10 * direction),
         8,
-        72,
+        84,
       );
-      const x = 48 + level * 10.5;
-      const y = ((scaleY(target, chartModel.paddedMin, chartModel.paddedMax, chartModel.height) / chartModel.height) * 100);
-      tiles.push({
-        level: signedLevel,
+      const target = quote.price * (1 + movePct * direction);
+
+      ladder.push({
+        id: `${direction > 0 ? "up" : "down"}-${level}`,
         direction: direction > 0 ? "up" : "down",
+        level,
         target,
-        odds,
+        movePct,
         leverage,
-        left: x,
-        top: y,
+        odds,
       });
     }
   }
 
-  return tiles.sort((left, right) => left.left - right.left || left.top - right.top);
+  return ladder;
 }
 
-function renderProjectionTile(projection, activeLevel) {
-  const activeClass = projection.level === activeLevel ? "active" : "";
-  const directionLabel = projection.direction === "up" ? "Upper target" : "Lower target";
-  const moveLabel = projection.direction === "up" ? "Rise" : "Dip";
+function renderTradeBoard(trades, activeTrade, quote) {
+  const longs = trades.filter((trade) => trade.direction === "up");
+  const shorts = trades.filter((trade) => trade.direction === "down");
+
+  return `
+    <section class="trade-group">
+      <span class="trade-group-title">Above spot</span>
+      ${longs.map((trade) => renderTradeCard(trade, activeTrade, quote)).join("")}
+    </section>
+    <section class="trade-spot">
+      <span class="trade-group-title">Center price</span>
+      <strong>${formatPrice(quote.price, quote.quoteAsset)}</strong>
+      <span class="trade-copy">${quote.market} recalculated every ${quote.pollIntervalMs}ms.</span>
+    </section>
+    <section class="trade-group">
+      <span class="trade-group-title">Below spot</span>
+      ${shorts.map((trade) => renderTradeCard(trade, activeTrade, quote)).join("")}
+    </section>
+  `;
+}
+
+function renderTradeCard(trade, activeTrade, quote) {
+  const activeClass = activeTrade?.id === trade.id ? "active" : "";
+  const sideLabel = trade.direction === "up" ? "Long ladder" : "Short ladder";
+  const moveLabel = `${trade.direction === "up" ? "+" : "-"}${(trade.movePct * 100).toFixed(2)}%`;
 
   return `
     <button
-      class="projection-tile ${projection.direction} ${activeClass}"
-      data-level="${projection.level}"
-      style="left:${projection.left}%; top:calc(${projection.top}% - 3rem);"
-      aria-label="${directionLabel} ${formatPrice(projection.target)}"
+      class="trade-card ${trade.direction} ${activeClass}"
+      data-trade-id="${trade.id}"
+      aria-label="${sideLabel} target ${formatPrice(trade.target, quote.quoteAsset)}"
     >
-      <span class="projection-direction">${moveLabel}</span>
-      <strong class="projection-target">${formatPrice(projection.target)}</strong>
-      <span class="projection-odds">${projection.odds}% odds</span>
-      <span class="projection-lev"><strong>x${projection.leverage}</strong> leverage</span>
+      <span class="trade-card-side">${sideLabel}</span>
+      <strong class="trade-card-target">${formatPrice(trade.target, quote.quoteAsset)}</strong>
+      <div class="trade-card-meta">
+        <span>${moveLabel}</span>
+        <span>x${trade.leverage} leverage</span>
+      </div>
+      <span class="trade-card-odds">${trade.odds}% implied odds</span>
     </button>
   `;
 }
 
-function buildSelectionSummary(projection) {
-  const directionLabel = projection.direction === "up" ? "upside" : "downside";
-  return `Target ${formatPrice(projection.target)} on the ${directionLabel} ladder with ${projection.odds}% implied odds and x${projection.leverage} leverage.`;
+function buildSelectionSummary(trade, quote) {
+  const directionLabel = trade.direction === "up" ? "push higher" : "push lower";
+  return `${quote.market} would need a ${directionLabel} move to ${formatPrice(
+    trade.target,
+    quote.quoteAsset,
+  )}. This ladder implies ${trade.odds}% odds with x${trade.leverage} leverage.`;
 }
 
-function buildPriceSubline(chartModel, quote) {
-  const delta = quote.price - chartModel.previous;
-  const deltaPct = chartModel.previous === 0 ? 0 : (delta / chartModel.previous) * 100;
-  const sign = delta >= 0 ? "+" : "";
-  const modeLabel = quote.readiness === "live" ? "Live pull" : "Oracle fallback";
-  return `${modeLabel} ${sign}${deltaPct.toFixed(2)}% in the current 1s tick.`;
+function buildPriceSubline({ quote, history }) {
+  const previous = history.at(-2)?.price ?? quote.price;
+  const delta = quote.price - previous;
+  const epsilon = Math.max(Math.abs(quote.price) * 0.00001, 1 / 10 ** Math.max(quote.precision, 6));
+
+  if (Math.abs(delta) > epsilon) {
+    const deltaPct = previous === 0 ? 0 : (delta / previous) * 100;
+    return `Fresh ${quote.pollIntervalMs}ms print ${formatSignedPercent(deltaPct)} from the previous sample.`;
+  }
+
+  if (Number.isFinite(quote.hourlyChangePct)) {
+    return `No fresh print in this ${quote.pollIntervalMs}ms window. 1h change is ${formatSignedPercent(
+      quote.hourlyChangePct,
+    )}.`;
+  }
+
+  return `Sampling every ${quote.pollIntervalMs}ms and keeping the latest ${MAX_POINTS} real ticks in memory.`;
+}
+
+function buildModeLabel(mode) {
+  if (mode === "live-price-api") {
+    return "Live price API";
+  }
+
+  if (mode === "live-pull-oracle") {
+    return "Live oracle";
+  }
+
+  if (mode === "oracle-fallback") {
+    return "Oracle fallback";
+  }
+
+  return "Static demo";
+}
+
+function buildStatusText(quote) {
+  if (quote.mode === "live-price-api") {
+    return `Polling ${quote.routeLabel} every ${quote.pollIntervalMs}ms.`;
+  }
+
+  if (quote.mode === "live-pull-oracle") {
+    return "Token API fallback was skipped, so the board is sampling the pull oracle route.";
+  }
+
+  if (quote.mode === "oracle-fallback") {
+    return "Live token-pair routing is unavailable, so the board fell back to the oracle route.";
+  }
+
+  return "Function data is unavailable, so the board is rendering the static fallback.";
+}
+
+function computeBaseMovePct(history, price) {
+  if (history.length < 4) {
+    return price >= 0.1 ? 0.004 : 0.008;
+  }
+
+  const recent = history.slice(-24);
+  const returns = [];
+
+  for (let index = 1; index < recent.length; index += 1) {
+    const previous = recent[index - 1].price;
+    const current = recent[index].price;
+
+    if (!previous || !current) {
+      continue;
+    }
+
+    returns.push(Math.abs((current - previous) / previous));
+  }
+
+  const averageReturn =
+    returns.reduce((sum, value) => sum + value, 0) / Math.max(returns.length, 1);
+
+  return clamp(
+    Math.max(averageReturn * 2.8, price >= 0.1 ? 0.004 : 0.008),
+    0.003,
+    0.12,
+  );
 }
 
 function computeTrendBias(history) {
-  if (history.length < 8) {
+  if (history.length < 6) {
     return 0;
   }
 
   const recent = history.slice(-8);
-  const first = recent[0]?.price ?? FALLBACK_PRICE;
-  const last = recent.at(-1)?.price ?? FALLBACK_PRICE;
-  return clamp((last - first) / Math.max(first, 0.000001), -1, 1);
+  const first = recent[0]?.price ?? recent.at(-1)?.price ?? FALLBACK_PRICE;
+  const last = recent.at(-1)?.price ?? first;
+  return clamp((last - first) / Math.max(Math.abs(first), 0.00000001), -1, 1);
+}
+
+function buildSmoothPath(points) {
+  if (points.length < 2) {
+    return "M 0 320 L 1200 320";
+  }
+
+  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const current = points[index];
+    const next = points[index + 1];
+    const controlX = ((current.x + next.x) / 2).toFixed(2);
+    path += ` Q ${controlX} ${current.y.toFixed(2)} ${next.x.toFixed(2)} ${next.y.toFixed(2)}`;
+  }
+
+  return path;
 }
 
 function scaleY(value, min, max, height) {
-  const ratio = (value - min) / Math.max(max - min, 0.000001);
+  const ratio = (value - min) / Math.max(max - min, 0.00000001);
   return height - ratio * height;
 }
 
-function formatPrice(value) {
-  return `${Number(value).toFixed(6)} USD`;
+function formatPrice(value, quoteAsset) {
+  if (!Number.isFinite(value)) {
+    return "--";
+  }
+
+  const absolute = Math.abs(value);
+
+  if (absolute >= 100) {
+    return `${value.toFixed(2)} ${quoteAsset}`;
+  }
+
+  if (absolute >= 1) {
+    return `${value.toFixed(4)} ${quoteAsset}`;
+  }
+
+  if (absolute >= 0.01) {
+    return `${value.toFixed(6)} ${quoteAsset}`;
+  }
+
+  if (absolute >= 0.0001) {
+    return `${value.toFixed(8)} ${quoteAsset}`;
+  }
+
+  if (absolute >= 0.000001) {
+    return `${value.toFixed(10)} ${quoteAsset}`;
+  }
+
+  return `${value.toExponential(4)} ${quoteAsset}`;
+}
+
+function formatSignedPercent(value) {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
 }
 
 function formatTime(timestamp) {
@@ -354,6 +566,72 @@ function formatTime(timestamp) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(timestamp));
+}
+
+function labelForMarket(id) {
+  if (id === "midnight-ada") {
+    return "MIDnight / ADA";
+  }
+
+  if (id === "snek-ada") {
+    return "SNEK / ADA";
+  }
+
+  return "ADA / USD";
+}
+
+function loadStoredHistory() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+
+    const now = Date.now();
+    const result = {};
+
+    for (const [marketId, points] of Object.entries(parsed)) {
+      if (!Array.isArray(points)) {
+        continue;
+      }
+
+      result[marketId] = points
+        .map((point) => ({
+          price: Number(point.price),
+          timestamp: Number(point.timestamp),
+        }))
+        .filter(
+          (point) =>
+            Number.isFinite(point.price) &&
+            Number.isFinite(point.timestamp) &&
+            now - point.timestamp <= HISTORY_TTL_MS,
+        )
+        .slice(-MAX_POINTS);
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function persistHistory() {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.historyByMarket));
+  } catch {
+    // Local persistence is optional for the demo.
+  }
+}
+
+function numberOrNull(value) {
+  return Number.isFinite(Number(value)) ? Number(value) : null;
 }
 
 function clamp(value, min, max) {
