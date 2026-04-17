@@ -146,6 +146,40 @@ h2 {
   gap: 0.8rem;
 }
 
+.status-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1.15rem;
+  border-radius: 999px;
+  border: 1px solid rgba(173, 255, 149, 0.16);
+  background: rgba(5, 18, 21, 0.72);
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.status-banner strong {
+  color: var(--text);
+}
+
+.status-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+  background: var(--alert);
+  box-shadow: 0 0 0 8px rgba(255, 207, 103, 0.08);
+}
+
+.status-banner.live .status-dot {
+  background: var(--accent-strong);
+  box-shadow: 0 0 0 8px rgba(92, 233, 141, 0.08);
+}
+
+.status-banner.static .status-dot {
+  background: var(--alert);
+}
+
 .metric,
 .oracle-card,
 .market-card,
@@ -512,5 +546,8 @@ input[type="range"] {
   h1 {
     max-width: 100%;
   }
-}
 
+  .status-banner {
+    border-radius: 22px;
+  }
+}

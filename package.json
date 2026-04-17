@@ -6,9 +6,10 @@
   "type": "module",
   "description": "Oracle-first prototype for a gamified Cardano swap experience powered by Charli3.",
   "scripts": {
+    "build": "node scripts/generate-static-data.mjs",
     "dev": "node --watch server.mjs",
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js"
+    "check": "node --check server.mjs && node --check public/app.js && node --check scripts/generate-static-data.mjs"
   },
   "engines": {
     "node": ">=24"

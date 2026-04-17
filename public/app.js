@@ -6,6 +6,8 @@ const state = {
   streak: 3,
   risk: "calm",
   slippage: 30,
+  runtimeMode: "booting",
+  staticDataset: null,
 };
 
 const riskProfiles = {
@@ -43,6 +45,9 @@ const refs = {
   oracleWindow: document.querySelector("#oracleWindow"),
   nodeStrip: document.querySelector("#nodeStrip"),
   metricFeeds: document.querySelector("#metricFeeds"),
+  statusBanner: document.querySelector("#statusBanner"),
+  statusMode: document.querySelector("#statusMode"),
+  statusText: document.querySelector("#statusText"),
   riskRow: document.querySelector("#riskRow"),
   slippageRow: document.querySelector("#slippageRow"),
   questScore: document.querySelector("#questScore"),
@@ -102,9 +107,8 @@ function bindControls() {
 }
 
 async function hydrateCards() {
-  const response = await fetch("/api/oracles");
-  const payload = await response.json();
-  state.cards = payload.data ?? [];
+  const payload = await fetchOracleIndex();
+  state.cards = payload.cards ?? [];
   refs.metricFeeds.textContent = String(state.cards.length);
   renderMarketRail();
 }
@@ -113,11 +117,65 @@ async function selectMarket(id) {
   state.selectedId = id;
   renderMarketRail();
 
-  const response = await fetch(`/api/oracles/${id}`);
-  const payload = await response.json();
-  state.selectedOracle = payload.data;
+  state.selectedOracle = await fetchOracleView(id);
   renderOracleDesk();
   renderQuest();
+}
+
+async function fetchOracleIndex() {
+  const apiResponse = await tryFetchJson("/api/oracles");
+  if (apiResponse?.data) {
+    state.runtimeMode = "live-api";
+    renderRuntimeStatus();
+    return { cards: apiResponse.data };
+  }
+
+  const staticBundle = await getStaticBundle();
+  state.runtimeMode = "static-demo";
+  renderRuntimeStatus(staticBundle.generatedAt);
+  return { cards: staticBundle.cards ?? [] };
+}
+
+async function fetchOracleView(id) {
+  if (state.runtimeMode === "live-api") {
+    const apiResponse = await tryFetchJson(`/api/oracles/${id}`);
+    if (apiResponse?.data) {
+      renderRuntimeStatus();
+      return apiResponse.data;
+    }
+  }
+
+  const staticBundle = await getStaticBundle();
+  state.runtimeMode = "static-demo";
+  renderRuntimeStatus(staticBundle.generatedAt);
+  return staticBundle.views?.[id] ?? null;
+}
+
+async function getStaticBundle() {
+  if (state.staticDataset) {
+    return state.staticDataset;
+  }
+
+  const response = await fetch("/data/oracles.json", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Static demo dataset is unavailable (${response.status})`);
+  }
+
+  state.staticDataset = await response.json();
+  return state.staticDataset;
+}
+
+async function tryFetchJson(url) {
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 function renderControls() {
@@ -158,6 +216,20 @@ function renderMarketRail() {
 
 function renderOracleDesk() {
   const oracleView = state.selectedOracle;
+  if (!oracleView) {
+    refs.oracleTitle.textContent = "Oracle data unavailable";
+    refs.oracleReadiness.textContent = "offline";
+    refs.oraclePrice.textContent = "Dataset missing";
+    refs.oracleMeta.textContent = "The selected market could not be loaded.";
+    refs.oracleNote.textContent = "Check the static bundle or API responses.";
+    refs.oraclePolicy.textContent = "--";
+    refs.oracleAddress.textContent = "--";
+    refs.oracleReference.textContent = "--";
+    refs.oracleWindow.textContent = "--";
+    refs.nodeStrip.innerHTML = "";
+    return;
+  }
+
   const oracle = oracleView.oracle;
 
   refs.oracleTitle.textContent = oracleView.displayName;
@@ -179,6 +251,28 @@ function renderOracleDesk() {
       `,
     )
     .join("");
+}
+
+function renderRuntimeStatus(generatedAt) {
+  refs.statusBanner.classList.toggle("live", state.runtimeMode === "live-api");
+  refs.statusBanner.classList.toggle("static", state.runtimeMode === "static-demo");
+
+  if (state.runtimeMode === "live-api") {
+    refs.statusMode.textContent = "Live API mode";
+    refs.statusText.textContent = "The page is talking to the local Node oracle adapter.";
+    return;
+  }
+
+  if (state.runtimeMode === "static-demo") {
+    refs.statusMode.textContent = "Static demo mode";
+    refs.statusText.textContent = generatedAt
+      ? `Netlify-safe export loaded from public/data/oracles.json, generated ${formatDate(generatedAt)}.`
+      : "Netlify-safe export loaded from public/data/oracles.json.";
+    return;
+  }
+
+  refs.statusMode.textContent = "Booting demo mode...";
+  refs.statusText.textContent = "Checking whether runtime APIs are available.";
 }
 
 function renderQuest(triggered = false) {
@@ -289,4 +383,3 @@ function formatDate(value) {
     timeStyle: "short",
   }).format(new Date(value));
 }
-

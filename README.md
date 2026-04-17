@@ -142,6 +142,27 @@ http://127.0.0.1:3000
 npm run check
 ```
 
+### Static demo build
+
+To generate the Netlify-ready static dataset and publishable `public/` output:
+
+```bash
+npm run build
+```
+
+This produces `public/data/oracles.json`, which the frontend will use automatically whenever `/api` is not available.
+
+## Netlify deployment mode
+
+The repo now supports a pure static Netlify deployment:
+
+- `netlify.toml` sets `publish = "public"`
+- Netlify runs `npm run build`
+- the build generates a static oracle bundle from the official Charli3 market configs and seeded demo snapshots
+- the frontend auto-detects runtime mode:
+  - `Live API mode` when running through `server.mjs`
+  - `Static demo mode` when served as a pure static site on Netlify
+
 ## Available API endpoints
 
 ### `GET /api/health`

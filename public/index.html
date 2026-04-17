@@ -20,6 +20,11 @@
             preprod configs, tries to read the oracle feed through the public synced Kupo
             instance, and wraps the result in a playful tap-to-swap interface.
           </p>
+          <div class="status-banner" id="statusBanner">
+            <span class="status-dot"></span>
+            <strong id="statusMode">Booting demo mode...</strong>
+            <span id="statusText">Checking whether runtime APIs are available.</span>
+          </div>
           <div class="hero-metrics">
             <article class="metric">
               <span class="metric-label">Configured feeds</span>
@@ -147,4 +152,3 @@
     <script type="module" src="/app.js"></script>
   </body>
 </html>
-
