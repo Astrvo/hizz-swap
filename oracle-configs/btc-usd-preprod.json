@@ -1,0 +1,44 @@
+{
+  "id": "btc-usd-preprod",
+  "pair": "BTC/USD",
+  "displayName": "BTC / USD",
+  "baseAsset": "BTC",
+  "quoteAsset": "USD",
+  "category": "charli3-odv",
+  "network": {
+    "name": "preprod",
+    "cardanoNetwork": "testnet",
+    "ogmiosUrl": "ws://35.209.192.203:1337",
+    "kupoUrl": "http://35.209.192.203:1442"
+  },
+  "oracleAddress": "addr_test1wq3pacs7jcrlwehpuy3ryj8kwvsqzjp9z6dpmx8txnr0vkq6vqeuu",
+  "policyId": "43d766bafc64c96754353e9686fac6130990a4f8568b3a2f76e2643f",
+  "odvValidityMs": 300000,
+  "referenceScript": {
+    "address": "addr_test1wrtqtdlqc66rzl2hcjhq5p0dfmalw944pwcne6p5kafthhqtzp03x",
+    "utxoReference": {
+      "transactionId": "7a69e9d3d90826f861107e4b503c56e08c40d092416a50bad37fc89865a78cd1",
+      "outputIndex": 0
+    }
+  },
+  "nodes": [
+    {
+      "rootUrl": "http://35.208.117.223:8003",
+      "pubKey": "58207973c66464a92c0487de83687816989083d66606e0d0fa226fefa3c5a9af5505"
+    },
+    {
+      "rootUrl": "http://35.208.117.223:8004",
+      "pubKey": "5820996de07c17761d5783e8e75d619673e7d7520e215c9b45d813170c65b2c10441"
+    }
+  ],
+  "source": {
+    "type": "official-charli3-hackathon-config",
+    "url": "https://github.com/Charli3-Official/hackathon-resources/tree/main/configs",
+    "file": "btc-usd-preprod.yml"
+  },
+  "notes": [
+    "This JSON copy is normalized from the official Charli3 hackathon YAML.",
+    "Ogmios and Kupo URLs are rewritten to the public synced preprod instance shared in the hackathon brief."
+  ]
+}
+

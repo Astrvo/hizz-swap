@@ -1,0 +1,44 @@
+{
+  "id": "ada-usd-preprod",
+  "pair": "ADA/USD",
+  "displayName": "ADA / USD",
+  "baseAsset": "ADA",
+  "quoteAsset": "USD",
+  "category": "charli3-odv",
+  "network": {
+    "name": "preprod",
+    "cardanoNetwork": "testnet",
+    "ogmiosUrl": "ws://35.209.192.203:1337",
+    "kupoUrl": "http://35.209.192.203:1442"
+  },
+  "oracleAddress": "addr_test1wq3pacs7jcrlwehpuy3ryj8kwvsqzjp9z6dpmx8txnr0vkq6vqeuu",
+  "policyId": "886dcb2363e160c944e63cf544ce6f6265b22ef7c4e2478dd975078e",
+  "odvValidityMs": 300000,
+  "referenceScript": {
+    "address": "addr_test1wrtqtdlqc66rzl2hcjhq5p0dfmalw944pwcne6p5kafthhqtzp03x",
+    "utxoReference": {
+      "transactionId": "7a69e9d3d90826f861107e4b503c56e08c40d092416a50bad37fc89865a78cd1",
+      "outputIndex": 0
+    }
+  },
+  "nodes": [
+    {
+      "rootUrl": "http://35.208.117.223:8001",
+      "pubKey": "582037c6febc9c2f940a38a5c1ea35eb9353ae233497bf9564395c76bf7b0590c4eb"
+    },
+    {
+      "rootUrl": "http://35.208.117.223:8002",
+      "pubKey": "58205a23e6016659b8c644efcb49301184f6d712037579df6793a50eae332f510248"
+    }
+  ],
+  "source": {
+    "type": "official-charli3-hackathon-config",
+    "url": "https://github.com/Charli3-Official/hackathon-resources/tree/main/configs",
+    "file": "ada-usd-preprod.yml"
+  },
+  "notes": [
+    "This JSON copy is normalized from the official Charli3 hackathon YAML.",
+    "Ogmios and Kupo URLs are rewritten to the public synced preprod instance shared in the hackathon brief."
+  ]
+}
+

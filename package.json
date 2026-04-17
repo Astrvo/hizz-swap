@@ -1,0 +1,16 @@
+{
+  "name": "hizz-swap",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Oracle-first prototype for a gamified Cardano swap experience powered by Charli3.",
+  "scripts": {
+    "dev": "node --watch server.mjs",
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
+
