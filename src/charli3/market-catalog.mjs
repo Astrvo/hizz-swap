@@ -1,5 +1,5 @@
 export const DEFAULT_MARKET_ID = "midnight-ada";
-export const POLL_INTERVAL_MS = 500;
+export const POLL_INTERVAL_MS = 2000;
 
 export const MARKET_CATALOG = {
   "midnight-ada": {

@@ -174,7 +174,7 @@ The repo now supports a Netlify deployment with a serverless quote route:
 - Netlify Functions serve:
   - `GET /api/markets`
   - `GET /api/quote?market=midnight-ada|snek-ada|ada-usd`
-- the frontend polls live routes every `500ms`
+- the frontend polls live routes every `2s`
 - if the live route cannot hydrate, the UI falls back truthfully to oracle or static mode instead of faking a changing chart
 
 ### Required environment variable
@@ -221,7 +221,7 @@ Returns:
 - live or fallback readiness
 - route label
 - fallback reasoning
-- a `500ms` polling hint for the frontend sampler
+- a `2s` polling hint for the frontend sampler
 
 ## Product direction after this foundation
 

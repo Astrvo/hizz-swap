@@ -1,4 +1,4 @@
-const POLL_INTERVAL_MS = 500;
+const POLL_INTERVAL_MS = 2000;
 const MAX_POINTS = 180;
 const STORAGE_KEY = "hizz-swap-live-history-v2";
 const HISTORY_TTL_MS = 1000 * 60 * 20;
@@ -373,7 +373,7 @@ function renderTradeBoard(trades, activeTrade, quote) {
     <section class="trade-spot">
       <span class="trade-group-title">Center price</span>
       <strong>${formatPrice(quote.price, quote.quoteAsset)}</strong>
-      <span class="trade-copy">${quote.market} recalculated every ${quote.pollIntervalMs}ms.</span>
+      <span class="trade-copy">${quote.market} recalculated every ${formatPollingWindow(quote.pollIntervalMs)}.</span>
     </section>
     <section class="trade-group">
       <span class="trade-group-title">Below spot</span>
@@ -419,16 +419,16 @@ function buildPriceSubline({ quote, history }) {
 
   if (Math.abs(delta) > epsilon) {
     const deltaPct = previous === 0 ? 0 : (delta / previous) * 100;
-    return `Fresh ${quote.pollIntervalMs}ms print ${formatSignedPercent(deltaPct)} from the previous sample.`;
+    return `Fresh ${formatPollingWindow(quote.pollIntervalMs)} print ${formatSignedPercent(deltaPct)} from the previous sample.`;
   }
 
   if (Number.isFinite(quote.hourlyChangePct)) {
-    return `No fresh print in this ${quote.pollIntervalMs}ms window. 1h change is ${formatSignedPercent(
+    return `Waiting for the next live print. No price change arrived in the last ${formatPollingWindow(quote.pollIntervalMs)}. 1h change is ${formatSignedPercent(
       quote.hourlyChangePct,
     )}.`;
   }
 
-  return `Sampling every ${quote.pollIntervalMs}ms and keeping the latest ${MAX_POINTS} real ticks in memory.`;
+  return `Sampling every ${formatPollingWindow(quote.pollIntervalMs)} and keeping the latest ${MAX_POINTS} real ticks in memory.`;
 }
 
 function buildModeLabel(mode) {
@@ -449,7 +449,7 @@ function buildModeLabel(mode) {
 
 function buildStatusText(quote) {
   if (quote.mode === "live-price-api") {
-    return `Polling ${quote.routeLabel} every ${quote.pollIntervalMs}ms.`;
+    return `Polling ${quote.routeLabel} every ${formatPollingWindow(quote.pollIntervalMs)}.`;
   }
 
   if (quote.mode === "live-pull-oracle") {
@@ -558,6 +558,18 @@ function formatPrice(value, quoteAsset) {
 function formatSignedPercent(value) {
   const sign = value >= 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}%`;
+}
+
+function formatPollingWindow(value) {
+  if (!Number.isFinite(value)) {
+    return "2s";
+  }
+
+  if (value % 1000 === 0) {
+    return `${value / 1000}s`;
+  }
+
+  return `${value}ms`;
 }
 
 function formatTime(timestamp) {
