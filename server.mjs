@@ -2,6 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getAdaUsdQuote } from "./src/charli3/ada-usd-quote.mjs";
 import { getOracleView, listOracleCards } from "./src/charli3/oracle-service.mjs";
 
 const fileName = fileURLToPath(import.meta.url);
@@ -32,6 +33,18 @@ const server = http.createServer(async (request, response) => {
     if (requestUrl.pathname === "/api/oracles") {
       const cards = await listOracleCards();
       return sendJson(response, 200, { data: cards });
+    }
+
+    if (requestUrl.pathname === "/api/ada-usd") {
+      const quote = await getAdaUsdQuote();
+
+      if (!quote) {
+        return sendJson(response, 404, {
+          error: "ADA/USD quote is unavailable.",
+        });
+      }
+
+      return sendJson(response, 200, { data: quote });
     }
 
     if (requestUrl.pathname.startsWith("/api/oracles/")) {
@@ -91,4 +104,3 @@ function sendJson(response, statusCode, payload) {
   });
   response.end(JSON.stringify(payload, null, 2));
 }
-

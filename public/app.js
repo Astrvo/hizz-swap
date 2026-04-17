@@ -1,154 +1,139 @@
 const state = {
-  cards: [],
-  selectedId: "ada-usd-preprod",
-  selectedOracle: null,
-  amount: 42,
-  streak: 3,
-  risk: "calm",
-  slippage: 30,
+  history: [],
+  latestQuote: null,
+  selectedLevel: 1,
   runtimeMode: "booting",
   staticDataset: null,
+  polling: false,
 };
 
-const riskProfiles = {
-  calm: {
-    label: "Calm",
-    multiplier: 0.92,
-    line: "Smooth onboarding mode for first-time tappers.",
-  },
-  balanced: {
-    label: "Balanced",
-    multiplier: 1.18,
-    line: "Default mode for routing with mild spectacle.",
-  },
-  turbo: {
-    label: "Turbo",
-    multiplier: 1.5,
-    line: "Highest dopamine, biggest tolerance for route drama.",
-  },
-};
+const LEVELS = [1, 2, 3, 4];
+const MAX_POINTS = 72;
+const FALLBACK_PRICE = 0.334136;
 
 const refs = {
-  amountInput: document.querySelector("#amountInput"),
-  amountLabel: document.querySelector("#amountLabel"),
-  streakInput: document.querySelector("#streakInput"),
-  streakLabel: document.querySelector("#streakLabel"),
-  marketRail: document.querySelector("#marketRail"),
-  oracleTitle: document.querySelector("#oracleTitle"),
-  oracleReadiness: document.querySelector("#oracleReadiness"),
-  oraclePrice: document.querySelector("#oraclePrice"),
-  oracleMeta: document.querySelector("#oracleMeta"),
-  oracleNote: document.querySelector("#oracleNote"),
-  oraclePolicy: document.querySelector("#oraclePolicy"),
-  oracleAddress: document.querySelector("#oracleAddress"),
-  oracleReference: document.querySelector("#oracleReference"),
-  oracleWindow: document.querySelector("#oracleWindow"),
-  nodeStrip: document.querySelector("#nodeStrip"),
-  metricFeeds: document.querySelector("#metricFeeds"),
-  statusBanner: document.querySelector("#statusBanner"),
   statusMode: document.querySelector("#statusMode"),
   statusText: document.querySelector("#statusText"),
-  riskRow: document.querySelector("#riskRow"),
-  slippageRow: document.querySelector("#slippageRow"),
-  questScore: document.querySelector("#questScore"),
-  routeList: document.querySelector("#routeList"),
-  narrative: document.querySelector("#narrative"),
-  runButton: document.querySelector("#runButton"),
+  currentPrice: document.querySelector("#currentPrice"),
+  priceSubline: document.querySelector("#priceSubline"),
+  marketName: document.querySelector("#marketName"),
+  readinessBadge: document.querySelector("#readinessBadge"),
+  sourceLabel: document.querySelector("#sourceLabel"),
+  lastPullLabel: document.querySelector("#lastPullLabel"),
+  currentLine: document.querySelector("#currentLine"),
+  currentTag: document.querySelector("#currentTag"),
+  chartLine: document.querySelector("#chartLine"),
+  chartFill: document.querySelector("#chartFill"),
+  projectionLayer: document.querySelector("#projectionLayer"),
+  selectionSummary: document.querySelector("#selectionSummary"),
+  oracleNote: document.querySelector("#oracleNote"),
+  endpointLabel: document.querySelector("#endpointLabel"),
 };
 
 boot();
 
 async function boot() {
-  bindControls();
-  await hydrateCards();
-  await selectMarket(state.selectedId);
+  bindInteractions();
+  await refreshQuote(true);
+  window.setInterval(() => {
+    refreshQuote(false);
+  }, 1000);
 }
 
-function bindControls() {
-  refs.amountInput.addEventListener("input", () => {
-    state.amount = Number(refs.amountInput.value);
-    renderControls();
-    renderQuest();
-  });
-
-  refs.streakInput.addEventListener("input", () => {
-    state.streak = Number(refs.streakInput.value);
-    renderControls();
-    renderQuest();
-  });
-
-  refs.riskRow.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-risk]");
-    if (!button) {
+function bindInteractions() {
+  refs.projectionLayer.addEventListener("click", (event) => {
+    const tile = event.target.closest("[data-level]");
+    if (!tile) {
       return;
     }
 
-    state.risk = button.dataset.risk;
-    syncChipRow(refs.riskRow, "[data-risk]", state.risk);
-    renderQuest();
+    state.selectedLevel = Number(tile.dataset.level);
+    render();
   });
+}
 
-  refs.slippageRow.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-slippage]");
-    if (!button) {
+async function refreshQuote(isBoot) {
+  if (state.polling) {
+    return;
+  }
+
+  state.polling = true;
+
+  try {
+    const quote = await fetchAdaQuote();
+    if (!quote) {
       return;
     }
 
-    state.slippage = Number(button.dataset.slippage);
-    syncChipRow(refs.slippageRow, "[data-slippage]", String(state.slippage));
-    renderQuest();
-  });
+    state.latestQuote = quote;
 
-  refs.runButton.addEventListener("click", () => {
-    renderQuest(true);
-  });
+    if (!state.history.length) {
+      seedHistory(quote.price, quote.fetchedAtMs);
+    } else {
+      appendHistory(quote.price, quote.fetchedAtMs);
+    }
 
-  renderControls();
+    if (isBoot && !LEVELS.includes(Math.abs(state.selectedLevel))) {
+      state.selectedLevel = 1;
+    }
+
+    render();
+  } finally {
+    state.polling = false;
+  }
 }
 
-async function hydrateCards() {
-  const payload = await fetchOracleIndex();
-  state.cards = payload.cards ?? [];
-  refs.metricFeeds.textContent = String(state.cards.length);
-  renderMarketRail();
-}
-
-async function selectMarket(id) {
-  state.selectedId = id;
-  renderMarketRail();
-
-  state.selectedOracle = await fetchOracleView(id);
-  renderOracleDesk();
-  renderQuest();
-}
-
-async function fetchOracleIndex() {
-  const apiResponse = await tryFetchJson("/api/oracles");
-  if (apiResponse?.data) {
+async function fetchAdaQuote() {
+  const apiPayload = await tryFetchJson("/api/ada-usd");
+  if (apiPayload?.data) {
     state.runtimeMode = "live-api";
-    renderRuntimeStatus();
-    return { cards: apiResponse.data };
+    return normalizeQuote(apiPayload.data);
   }
 
   const staticBundle = await getStaticBundle();
+  const view = staticBundle?.views?.["ada-usd-preprod"];
+  if (!view) {
+    return null;
+  }
+
   state.runtimeMode = "static-demo";
-  renderRuntimeStatus(staticBundle.generatedAt);
-  return { cards: staticBundle.cards ?? [] };
+  return normalizeQuote({
+    market: view.displayName,
+    pair: view.pair,
+    baseAsset: view.baseAsset,
+    quoteAsset: view.quoteAsset,
+    price: view.oracle.priceDisplay,
+    precision: view.oracle.precision,
+    readiness: view.oracle.readiness,
+    source: view.oracle.source,
+    note: view.oracle.note,
+    fetchedAtMs: Date.now(),
+    oracleTimestampMs: view.oracle.createdAtMs,
+    expiresAtMs: view.oracle.expiresAtMs,
+    mode: "static-demo",
+    kupoEndpoint: view.networkConfig.kupoUrl,
+  });
 }
 
-async function fetchOracleView(id) {
-  if (state.runtimeMode === "live-api") {
-    const apiResponse = await tryFetchJson(`/api/oracles/${id}`);
-    if (apiResponse?.data) {
-      renderRuntimeStatus();
-      return apiResponse.data;
-    }
-  }
+function normalizeQuote(raw) {
+  const price = Number(raw.price ?? FALLBACK_PRICE);
 
-  const staticBundle = await getStaticBundle();
-  state.runtimeMode = "static-demo";
-  renderRuntimeStatus(staticBundle.generatedAt);
-  return staticBundle.views?.[id] ?? null;
+  return {
+    market: raw.market ?? "ADA / USD",
+    pair: raw.pair ?? "ADA/USD",
+    baseAsset: raw.baseAsset ?? "ADA",
+    quoteAsset: raw.quoteAsset ?? "USD",
+    price: Number.isFinite(price) ? price : FALLBACK_PRICE,
+    precision: Number.isFinite(raw.precision) ? raw.precision : 6,
+    readiness: raw.readiness ?? "seeded",
+    source: raw.source ?? "charli3",
+    note: raw.note ?? "",
+    fetchedAtMs: Number(raw.fetchedAtMs ?? Date.now()),
+    oracleTimestampMs: raw.oracleTimestampMs ? Number(raw.oracleTimestampMs) : null,
+    expiresAtMs: raw.expiresAtMs ? Number(raw.expiresAtMs) : null,
+    mode: raw.mode ?? state.runtimeMode,
+    kupoEndpoint: raw.kupoEndpoint ?? "/api/ada-usd",
+  };
 }
 
 async function getStaticBundle() {
@@ -156,9 +141,12 @@ async function getStaticBundle() {
     return state.staticDataset;
   }
 
-  const response = await fetch("/data/oracles.json", { cache: "no-store" });
+  const response = await fetch("/data/oracles.json", {
+    cache: "no-store",
+  });
+
   if (!response.ok) {
-    throw new Error(`Static demo dataset is unavailable (${response.status})`);
+    throw new Error(`Static data bundle unavailable (${response.status})`);
   }
 
   state.staticDataset = await response.json();
@@ -167,7 +155,10 @@ async function getStaticBundle() {
 
 async function tryFetchJson(url) {
   try {
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, {
+      cache: "no-store",
+    });
+
     if (!response.ok) {
       return null;
     }
@@ -178,208 +169,193 @@ async function tryFetchJson(url) {
   }
 }
 
-function renderControls() {
-  refs.amountLabel.textContent = `${state.amount} ADA`;
-  refs.streakLabel.textContent = `${state.streak} wins`;
-  syncChipRow(refs.riskRow, "[data-risk]", state.risk);
-  syncChipRow(refs.slippageRow, "[data-slippage]", String(state.slippage));
+function seedHistory(price, fetchedAtMs) {
+  state.history = Array.from({ length: MAX_POINTS }, (_, index) => ({
+    price,
+    timestamp: fetchedAtMs - (MAX_POINTS - index) * 1000,
+  }));
 }
 
-function syncChipRow(root, selector, activeValue) {
-  root.querySelectorAll(selector).forEach((button) => {
-    const nextValue = button.dataset.risk ?? button.dataset.slippage;
-    button.classList.toggle("active", nextValue === activeValue);
+function appendHistory(price, fetchedAtMs) {
+  state.history.push({
+    price,
+    timestamp: fetchedAtMs,
   });
+
+  if (state.history.length > MAX_POINTS) {
+    state.history = state.history.slice(-MAX_POINTS);
+  }
 }
 
-function renderMarketRail() {
-  refs.marketRail.innerHTML = state.cards
-    .map(
-      (card) => `
-        <article class="market-card ${card.id === state.selectedId ? "active" : ""}" data-id="${card.id}">
-          <span class="card-label">${card.network}</span>
-          <strong>${card.displayName}</strong>
-          <span>${card.nodeCount} nodes</span>
-          <span>${card.validityWindowMinutes}m validity</span>
-          <div class="muted">Policy ${card.policyIdShort}</div>
-        </article>
-      `,
-    )
+function render() {
+  if (!state.latestQuote) {
+    return;
+  }
+
+  const quote = state.latestQuote;
+  const chartModel = buildChartModel(state.history);
+  const projections = buildProjectionModel({
+    price: quote.price,
+    chartModel,
+    trendBias: computeTrendBias(state.history),
+  });
+  const selectedProjection =
+    projections.find((projection) => projection.level === state.selectedLevel) ?? projections[0];
+
+  refs.marketName.textContent = quote.market;
+  refs.currentPrice.textContent = formatPrice(quote.price);
+  refs.priceSubline.textContent = buildPriceSubline(chartModel, quote);
+  refs.readinessBadge.textContent = quote.readiness;
+  refs.sourceLabel.textContent = quote.source;
+  refs.lastPullLabel.textContent = formatTime(quote.fetchedAtMs);
+  refs.oracleNote.textContent = quote.note;
+  refs.endpointLabel.textContent =
+    state.runtimeMode === "live-api" ? "/api/ada-usd" : "static oracle bundle";
+  refs.statusMode.textContent = state.runtimeMode === "live-api" ? "Live API mode" : "Static demo mode";
+  refs.statusText.textContent =
+    state.runtimeMode === "live-api"
+      ? "Polling the ADA/USD oracle route every second."
+      : "Polling the static ADA/USD fallback every second.";
+  refs.currentLine.style.top = `${chartModel.currentY}%`;
+  refs.currentTag.style.top = `calc(${chartModel.currentY}% - 1.2rem)`;
+  refs.currentTag.textContent = formatPrice(quote.price);
+  refs.chartLine.setAttribute("d", chartModel.linePath);
+  refs.chartFill.setAttribute("d", chartModel.fillPath);
+  refs.chartFill.setAttribute("fill", "url(#chartGradient)");
+  refs.projectionLayer.innerHTML = projections
+    .map((projection) => renderProjectionTile(projection, selectedProjection.level))
     .join("");
+  refs.selectionSummary.textContent = buildSelectionSummary(selectedProjection);
+}
 
-  refs.marketRail.querySelectorAll("[data-id]").forEach((card) => {
-    card.addEventListener("click", () => {
-      selectMarket(card.dataset.id);
-    });
+function buildChartModel(history) {
+  const prices = history.map((point) => point.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const span = max - min || max * 0.012 || 0.01;
+  const paddedMin = min - span * 1.8;
+  const paddedMax = max + span * 1.8;
+  const width = 1200;
+  const height = 560;
+
+  const points = history.map((point, index) => {
+    const x = (index / Math.max(1, history.length - 1)) * width;
+    const y = scaleY(point.price, paddedMin, paddedMax, height);
+    return { x, y, price: point.price };
   });
+
+  const linePath = points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(" ");
+  const fillPath = `${linePath} L ${width} ${height} L 0 ${height} Z`;
+  const currentY = ((points.at(-1)?.y ?? height / 2) / height) * 100;
+
+  return {
+    paddedMin,
+    paddedMax,
+    linePath,
+    fillPath,
+    currentY,
+    width,
+    height,
+    latest: points.at(-1)?.price ?? FALLBACK_PRICE,
+    previous: points.at(-2)?.price ?? points.at(-1)?.price ?? FALLBACK_PRICE,
+  };
 }
 
-function renderOracleDesk() {
-  const oracleView = state.selectedOracle;
-  if (!oracleView) {
-    refs.oracleTitle.textContent = "Oracle data unavailable";
-    refs.oracleReadiness.textContent = "offline";
-    refs.oraclePrice.textContent = "Dataset missing";
-    refs.oracleMeta.textContent = "The selected market could not be loaded.";
-    refs.oracleNote.textContent = "Check the static bundle or API responses.";
-    refs.oraclePolicy.textContent = "--";
-    refs.oracleAddress.textContent = "--";
-    refs.oracleReference.textContent = "--";
-    refs.oracleWindow.textContent = "--";
-    refs.nodeStrip.innerHTML = "";
-    return;
+function buildProjectionModel({ price, chartModel, trendBias }) {
+  const tiles = [];
+
+  for (const level of LEVELS) {
+    const movePct = 0.0034 + (level - 1) * 0.0048;
+    const leverage = 2 + level * 2 + (level > 2 ? 1 : 0);
+
+    for (const direction of [1, -1]) {
+      const signedLevel = level * direction;
+      const target = price * (1 + movePct * direction);
+      const odds = clamp(
+        Math.round(56 - level * 10 + trendBias * 18 * direction),
+        8,
+        72,
+      );
+      const x = 48 + level * 10.5;
+      const y = ((scaleY(target, chartModel.paddedMin, chartModel.paddedMax, chartModel.height) / chartModel.height) * 100);
+      tiles.push({
+        level: signedLevel,
+        direction: direction > 0 ? "up" : "down",
+        target,
+        odds,
+        leverage,
+        left: x,
+        top: y,
+      });
+    }
   }
 
-  const oracle = oracleView.oracle;
-
-  refs.oracleTitle.textContent = oracleView.displayName;
-  refs.oracleReadiness.textContent = oracle.readiness;
-  refs.oraclePrice.textContent = formatPrice(oracle.priceDisplay, oracleView.quoteAsset);
-  refs.oracleMeta.textContent = buildOracleMeta(oracle, oracleView);
-  refs.oracleNote.textContent = oracle.note ?? "";
-  refs.oraclePolicy.textContent = oracleView.policyId;
-  refs.oracleAddress.textContent = oracleView.oracleAddress;
-  refs.oracleReference.textContent = oracleView.referenceScript.addressShort;
-  refs.oracleWindow.textContent = `ODV validity window: ${oracleView.validityWindowMinutes} minutes`;
-  refs.nodeStrip.innerHTML = oracleView.nodes
-    .map(
-      (node) => `
-        <article class="node-pill">
-          <strong>${node.rootUrl}</strong>
-          <div class="muted">pubKey ${node.pubKeyShort}</div>
-        </article>
-      `,
-    )
-    .join("");
+  return tiles.sort((left, right) => left.left - right.left || left.top - right.top);
 }
 
-function renderRuntimeStatus(generatedAt) {
-  refs.statusBanner.classList.toggle("live", state.runtimeMode === "live-api");
-  refs.statusBanner.classList.toggle("static", state.runtimeMode === "static-demo");
+function renderProjectionTile(projection, activeLevel) {
+  const activeClass = projection.level === activeLevel ? "active" : "";
+  const directionLabel = projection.direction === "up" ? "Upper target" : "Lower target";
+  const moveLabel = projection.direction === "up" ? "Rise" : "Dip";
 
-  if (state.runtimeMode === "live-api") {
-    refs.statusMode.textContent = "Live API mode";
-    refs.statusText.textContent = "The page is talking to the local Node oracle adapter.";
-    return;
+  return `
+    <button
+      class="projection-tile ${projection.direction} ${activeClass}"
+      data-level="${projection.level}"
+      style="left:${projection.left}%; top:calc(${projection.top}% - 3rem);"
+      aria-label="${directionLabel} ${formatPrice(projection.target)}"
+    >
+      <span class="projection-direction">${moveLabel}</span>
+      <strong class="projection-target">${formatPrice(projection.target)}</strong>
+      <span class="projection-odds">${projection.odds}% odds</span>
+      <span class="projection-lev"><strong>x${projection.leverage}</strong> leverage</span>
+    </button>
+  `;
+}
+
+function buildSelectionSummary(projection) {
+  const directionLabel = projection.direction === "up" ? "upside" : "downside";
+  return `Target ${formatPrice(projection.target)} on the ${directionLabel} ladder with ${projection.odds}% implied odds and x${projection.leverage} leverage.`;
+}
+
+function buildPriceSubline(chartModel, quote) {
+  const delta = quote.price - chartModel.previous;
+  const deltaPct = chartModel.previous === 0 ? 0 : (delta / chartModel.previous) * 100;
+  const sign = delta >= 0 ? "+" : "";
+  const modeLabel = quote.readiness === "live" ? "Live pull" : "Oracle fallback";
+  return `${modeLabel} ${sign}${deltaPct.toFixed(2)}% in the current 1s tick.`;
+}
+
+function computeTrendBias(history) {
+  if (history.length < 8) {
+    return 0;
   }
 
-  if (state.runtimeMode === "static-demo") {
-    refs.statusMode.textContent = "Static demo mode";
-    refs.statusText.textContent = generatedAt
-      ? `Netlify-safe export loaded from public/data/oracles.json, generated ${formatDate(generatedAt)}.`
-      : "Netlify-safe export loaded from public/data/oracles.json.";
-    return;
-  }
-
-  refs.statusMode.textContent = "Booting demo mode...";
-  refs.statusText.textContent = "Checking whether runtime APIs are available.";
+  const recent = history.slice(-8);
+  const first = recent[0]?.price ?? FALLBACK_PRICE;
+  const last = recent.at(-1)?.price ?? FALLBACK_PRICE;
+  return clamp((last - first) / Math.max(first, 0.000001), -1, 1);
 }
 
-function renderQuest(triggered = false) {
-  const oracleView = state.selectedOracle;
-  if (!oracleView) {
-    return;
-  }
-
-  const oracle = oracleView.oracle;
-  const profile = riskProfiles[state.risk];
-  const readinessBonus = {
-    live: 26,
-    seeded: 14,
-    "config-only": 6,
-  }[oracle.readiness] ?? 4;
-
-  const baseScore = Math.round(state.amount * profile.multiplier + state.streak * 17);
-  const slippagePenalty = Math.round(state.slippage / 10);
-  const questScore = Math.max(12, baseScore + readinessBonus - slippagePenalty);
-
-  refs.questScore.textContent = String(questScore);
-  refs.routeList.innerHTML = buildRouteSteps({
-    oracleView,
-    oracle,
-    profile,
-    questScore,
-    triggered,
-  });
-  refs.narrative.textContent = buildNarrative({
-    oracleView,
-    oracle,
-    profile,
-    questScore,
-    triggered,
-  });
+function scaleY(value, min, max, height) {
+  const ratio = (value - min) / Math.max(max - min, 0.000001);
+  return height - ratio * height;
 }
 
-function buildRouteSteps({ oracleView, oracle, profile, questScore, triggered }) {
-  const priceLine =
-    oracle.priceDisplay === null
-      ? "Waiting for first successful live read. Prototype stays in oracle-aware staging mode."
-      : `Reference mid ${oracle.priceDisplay.toFixed(oracle.precision > 6 ? 6 : Math.max(2, oracle.precision))} ${oracleView.quoteAsset}.`;
-
-  return [
-    {
-      title: "1. Lock the tap",
-      copy: `${state.amount} ${oracleView.baseAsset} staged with ${state.slippage / 100}% slippage.`,
-    },
-    {
-      title: "2. Read Charli3 ODV",
-      copy: `${oracle.readiness} feed path. ${priceLine}`,
-    },
-    {
-      title: "3. Score the loop",
-      copy: `${profile.label} mode yields a ${questScore} point session forecast${triggered ? " after a fresh tap" : ""}.`,
-    },
-  ]
-    .map(
-      (step) => `
-        <article class="route-step">
-          <strong>${step.title}</strong>
-          <div class="muted">${step.copy}</div>
-        </article>
-      `,
-    )
-    .join("");
+function formatPrice(value) {
+  return `${Number(value).toFixed(6)} USD`;
 }
 
-function buildNarrative({ oracleView, oracle, profile, questScore, triggered }) {
-  const liveLine =
-    oracle.readiness === "live"
-      ? "The public preprod Kupo endpoint answered, so this loop is using a fresh oracle read."
-      : "This environment could not hydrate the public preprod feed just now, so the loop is falling back to the configured snapshot path.";
-
-  return `${profile.line} ${liveLine} Current target: ${state.streak} clean taps on ${oracleView.displayName}, with an estimated ${questScore} point burst${triggered ? " after the latest run" : ""}.`;
-}
-
-function buildOracleMeta(oracle, oracleView) {
-  const timestamps = [];
-
-  if (oracle.createdAtMs) {
-    timestamps.push(`created ${formatDate(oracle.createdAtMs)}`);
-  }
-
-  if (oracle.expiresAtMs) {
-    timestamps.push(`expires ${formatDate(oracle.expiresAtMs)}`);
-  }
-
-  const extra = oracle.error ? `Last error: ${oracle.error}.` : "";
-  const base = `${oracle.source} for ${oracleView.baseAsset}/${oracleView.quoteAsset}.`;
-
-  return [base, timestamps.join(" • "), extra].filter(Boolean).join(" ");
-}
-
-function formatPrice(value, quoteAsset) {
-  if (value === null || value === undefined) {
-    return "Awaiting live feed";
-  }
-
-  return `${value.toLocaleString(undefined, {
-    maximumFractionDigits: 6,
-  })} ${quoteAsset}`;
-}
-
-function formatDate(value) {
+function formatTime(timestamp) {
   return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }

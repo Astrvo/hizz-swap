@@ -3,149 +3,86 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hizz Swap Prototype</title>
+    <title>Hizz Swap | ADA Tap Board</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="ambient ambient-a"></div>
-    <div class="ambient ambient-b"></div>
-
-    <main class="shell">
-      <section class="panel hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Charli3 Oracle-First Prototype</p>
-          <h1>Hizz Swap turns Cardano swaps into a fast, game-like tap loop.</h1>
-          <p class="lede">
-            This first cut is intentionally lightweight: it hydrates official Charli3 ODV
-            preprod configs, tries to read the oracle feed through the public synced Kupo
-            instance, and wraps the result in a playful tap-to-swap interface.
-          </p>
-          <div class="status-banner" id="statusBanner">
-            <span class="status-dot"></span>
-            <strong id="statusMode">Booting demo mode...</strong>
-            <span id="statusText">Checking whether runtime APIs are available.</span>
+    <main class="page">
+      <div class="noise"></div>
+      <section class="desk">
+        <header class="topbar">
+          <div class="brand-block">
+            <span class="brand-kicker">Hizz / Charli3</span>
+            <h1>ADA/USD Tap Board</h1>
           </div>
-          <div class="hero-metrics">
-            <article class="metric">
-              <span class="metric-label">Configured feeds</span>
-              <strong id="metricFeeds">3</strong>
-            </article>
-            <article class="metric">
-              <span class="metric-label">Oracle mode</span>
-              <strong>Pull Oracle</strong>
-            </article>
-            <article class="metric">
-              <span class="metric-label">Today’s build</span>
-              <strong>Foundation</strong>
-            </article>
+          <div class="topbar-meta">
+            <div class="live-pill" id="livePill">
+              <span class="live-dot"></span>
+              <strong id="statusMode">Booting</strong>
+              <span id="statusText">Preparing oracle feed.</span>
+            </div>
+            <div class="price-stack">
+              <span class="price-label">Current price</span>
+              <strong class="price-value" id="currentPrice">--</strong>
+              <span class="price-subline" id="priceSubline">Waiting for first pull.</span>
+            </div>
           </div>
-        </div>
+        </header>
 
-        <div class="hero-orb">
-          <div class="orb-ring"></div>
-          <div class="orb-core">
-            <span>Tap</span>
-            <span>Route</span>
-            <span>Score</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel oracle-desk">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Oracle cockpit</p>
-            <h2 id="oracleTitle">Loading market...</h2>
-          </div>
-          <span class="pill" id="oracleReadiness">booting</span>
-        </div>
-
-        <div class="oracle-grid">
-          <article class="oracle-card live-card">
-            <span class="card-label">Feed status</span>
-            <strong class="oracle-price" id="oraclePrice">--</strong>
-            <p class="oracle-meta" id="oracleMeta">Hydrating official config...</p>
-            <p class="oracle-note" id="oracleNote"></p>
-          </article>
-
-          <article class="oracle-card">
-            <span class="card-label">Policy</span>
-            <strong id="oraclePolicy">--</strong>
-            <p class="muted" id="oracleAddress">--</p>
-          </article>
-
-          <article class="oracle-card">
-            <span class="card-label">Reference script</span>
-            <strong id="oracleReference">--</strong>
-            <p class="muted" id="oracleWindow">--</p>
-          </article>
-        </div>
-
-        <div class="node-strip" id="nodeStrip"></div>
-      </section>
-
-      <section class="panel market-panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Market rail</p>
-            <h2>Official Charli3 preprod feeds</h2>
-          </div>
-        </div>
-        <div class="market-rail" id="marketRail"></div>
-      </section>
-
-      <section class="panel tap-panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Tap loop</p>
-            <h2>Prototype the play layer before wiring execution</h2>
-          </div>
-        </div>
-
-        <div class="tap-layout">
-          <div class="tap-controls">
-            <label class="control">
-              <span>Swap size</span>
-              <strong id="amountLabel">42 ADA</strong>
-              <input id="amountInput" type="range" min="5" max="250" step="1" value="42" />
-            </label>
-
-            <label class="control">
-              <span>Streak target</span>
-              <strong id="streakLabel">3 wins</strong>
-              <input id="streakInput" type="range" min="1" max="10" step="1" value="3" />
-            </label>
-
-            <div class="control">
-              <span>Risk style</span>
-              <div class="chip-row" id="riskRow">
-                <button class="chip active" data-risk="calm">Calm</button>
-                <button class="chip" data-risk="balanced">Balanced</button>
-                <button class="chip" data-risk="turbo">Turbo</button>
+        <section class="arena">
+          <div class="arena-head">
+            <div>
+              <p class="arena-kicker">Charli3 pull oracle / 1s refresh</p>
+              <div class="arena-line">
+                <span class="arena-market" id="marketName">ADA / USD</span>
+                <span class="arena-badge" id="readinessBadge">booting</span>
               </div>
             </div>
-
-            <div class="control">
-              <span>Slippage preset</span>
-              <div class="chip-row" id="slippageRow">
-                <button class="chip active" data-slippage="30">0.30%</button>
-                <button class="chip" data-slippage="80">0.80%</button>
-                <button class="chip" data-slippage="150">1.50%</button>
+            <div class="arena-stats">
+              <div class="stat-chip">
+                <span>Oracle source</span>
+                <strong id="sourceLabel">--</strong>
+              </div>
+              <div class="stat-chip">
+                <span>Last pull</span>
+                <strong id="lastPullLabel">--</strong>
               </div>
             </div>
           </div>
 
-          <div class="route-card">
-            <span class="card-label">Quest preview</span>
-            <div class="score-ring">
-              <strong id="questScore">--</strong>
-              <span>session score</span>
-            </div>
-            <div class="route-list" id="routeList"></div>
-            <p class="narrative" id="narrative"></p>
-            <button class="cta" id="runButton">Run demo loop</button>
+          <div class="chart-stage">
+            <div class="grid-backdrop"></div>
+            <div class="current-line" id="currentLine"></div>
+            <div class="current-tag" id="currentTag">--</div>
+            <svg class="chart-svg" id="chartSvg" viewBox="0 0 1200 560" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(17, 215, 255, 0.28)"></stop>
+                  <stop offset="72%" stop-color="rgba(17, 215, 255, 0.04)"></stop>
+                  <stop offset="100%" stop-color="rgba(17, 215, 255, 0)"></stop>
+                </linearGradient>
+              </defs>
+              <path id="chartFill" class="chart-fill"></path>
+              <path id="chartLine" class="chart-line"></path>
+            </svg>
+            <div class="projection-layer" id="projectionLayer"></div>
           </div>
-        </div>
+
+          <footer class="status-strip">
+            <div class="strip-card">
+              <span>Selected box</span>
+              <strong id="selectionSummary">Waiting for price ladder...</strong>
+            </div>
+            <div class="strip-card">
+              <span>Oracle note</span>
+              <strong id="oracleNote">--</strong>
+            </div>
+            <div class="strip-card">
+              <span>Endpoint</span>
+              <strong id="endpointLabel">/api/ada-usd</strong>
+            </div>
+          </footer>
+        </section>
       </section>
     </main>
 
